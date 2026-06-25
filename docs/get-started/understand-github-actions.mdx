@@ -1,0 +1,173 @@
+# Understand GitHub Actions — improved examples and guidance
+
+This page introduces the core GitHub Actions concepts and provides practical, updated examples you can copy into your repository. It also includes guidance on security, permissions, caching, and accessibility.
+
+## Key concepts (short)
+- Workflows — configurable automated processes defined in .github/workflows/*.yml
+- Events — triggers (push, pull_request, schedule, etc.)
+- Jobs — units of work that run on runners
+- Steps — individual actions or shell commands inside a job
+- Actions — reusable units from Marketplace or custom repositories
+- Runners — virtual machines or self-hosted machines that run jobs
+
+---
+
+## Example: Minimal, recommended "Hello World" workflow
+
+- When to use: simple sanity check and learning example.
+- Notes: enable concurrency and minimal permissions.
+
+```yaml
+# .github/workflows/hello-world.yml
+name: Hello World CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Print greeting
+        run: echo "Hello, world! This workflow ran on $RUNNER_OS"
+```
+
+---
+
+## Recommended: Node.js CI with matrix and caching
+
+- When to use: run tests across Node versions and OSes without expanding minutes unduly.
+- Notes: prefer pinned major versions for Marketplace actions (e.g., actions/checkout@v4), use built-in caching where available.
+
+```yaml
+# .github/workflows/node-ci.yml
+name: Node.js CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        node-version: [16, 18]
+        os: [ubuntu-latest, windows-latest]
+      fail-fast: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+```
+
+---
+
+## Advanced example: cache, artifacts, and secrets (deploy example)
+
+- When to use: collect test artifacts, deploy only from main, and use secrets safely.
+
+```yaml
+# .github/workflows/advanced-ci.yml
+name: Advanced CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  NODE_ENV: test
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run tests and collect coverage
+        env:
+          CI: true
+        run: |
+          npm test -- --coverage || true
+          mkdir -p output
+          cp -r coverage output/coverage || true
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: output/coverage
+
+      - name: Conditional deploy (main only)
+        if: github.ref == 'refs/heads/main' && success()
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+        run: |
+          echo "Starting deploy (token masked)"
+          ./scripts/deploy.sh
+```
+
+---
+
+## Copy-edit and content notes
+- Use short, concrete sentences and place examples immediately after explanatory text.
+- Prefer stable major-version pins for Marketplace actions (e.g., actions/checkout@v4).
+- Demonstrate minimal permissions and mention how to expand them safely (link to Permissions docs).
+- Add a short section on secrets handling: never echo secrets, use environment variables seeded from secrets, and restrict token scopes.
+
+## Accessibility checklist
+- Use clear heading hierarchy (H1 then H2/H3).
+- Tag code blocks with language (yaml, bash) to help screen readers.
+- Provide alt text for diagrams/images explaining intent.
+- Ensure links have descriptive names (avoid "click here").
+
+## Reviewer checklist (what I changed)
+- Rewrote examples: minimal, recommended CI, advanced.
+- Added security and accessibility guidance.
+- Copy-edited phrasing for clarity and consistency.
